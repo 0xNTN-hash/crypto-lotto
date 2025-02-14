@@ -19,7 +19,7 @@ abstract contract CodeConstants {
     bytes32 constant KEY_HASH = 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae;  // Mock Hash
     uint32 constant CALLBACK_GAS_LIMIT = 40000;
     uint16 constant REQUEST_CONFIRMATIONS = 3;
-    uint32 constant NUM_WORDS =  1;
+    uint32 constant NUM_WORDS =  10;
 }
 
 contract HelperConfig is Script, CodeConstants {

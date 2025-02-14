@@ -19,14 +19,12 @@
 // private
 // view & pure functions
 
-// SPDX-License-Identifier: SEE LICENSE IN LICENSE
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
-
-
 
 contract Lotto is VRFConsumerBaseV2Plus {
     /*//////////////////////////////////////////////////////////////
@@ -36,6 +34,17 @@ contract Lotto is VRFConsumerBaseV2Plus {
     error LOTTO__LottoIsNotOpen();
     error LOTTO__InvalidNumbersLength();
     error LOTTO__InvalidNumber(string);
+    error LOTTO__NotEnoughUniqueNumbers();
+    error LOTTO__ALLREADY_CLAIMED();
+    error LOTTO__TicketDoesNotExist();
+
+    /*//////////////////////////////////////////////////////////////
+                            CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+    uint256 private constant SIX_NUMBERS_PRIZE_PERCENT = 70;
+    uint256 private constant FIVE_NUMBERS_PRIZE_PERCENT = 15;
+    uint256 private constant FOUR_NUMBERS_PRIZE_PERCENT = 10;
+    uint256 private constant THREE_NUMBERS_PRIZE_PERCENT = 5;
 
     /*//////////////////////////////////////////////////////////////
                            TYPE DECLARATIONS
@@ -46,8 +55,19 @@ contract Lotto is VRFConsumerBaseV2Plus {
         CALCULATING_WINNERS
     }
 
+    enum PRIZE_LEVELS {
+        ZERO,
+        THREE,
+        FOUR,
+        FIVE,
+        SIX
+    }
+
     struct Ticket {
         uint8[6] numbers;
+        bool hasClaimedPrize;
+        PRIZE_LEVELS prizeLevel;
+        uint256 prize;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -69,6 +89,9 @@ contract Lotto is VRFConsumerBaseV2Plus {
     uint256 private s_numberOfParticipants;
     LottoState private s_state;
     mapping(address => Ticket) private s_tickets;
+    address[] private s_participants;
+
+    uint8[] public s_winningNumbers;
 
     /*//////////////////////////////////////////////////////////////
                             EVENTS
@@ -116,14 +139,37 @@ contract Lotto is VRFConsumerBaseV2Plus {
         }
 
         s_tickets[msg.sender] = Ticket({
-            numbers: _numbers
+            numbers: _numbers,
+            hasClaimedPrize: false,
+            prizeLevel: PRIZE_LEVELS.ZERO,
+            prize: 0
         });
+        s_participants.push(msg.sender);
 
         s_numberOfParticipants++;
         s_totalJackpot += msg.value;
         emit NewParticipantEntered();
     }
 
+    // function checkMyNumbers() external view returns(bool) {
+    //     if(s_state != LottoState.OPEN) {
+    //         revert LOTTO__LottoIsNotOpen();
+    //     }
+
+    //     Ticket memory ticket = s_tickets[msg.sender];
+
+    //     if(ticket.numbers[0] == 0) {
+    //         revert LOTTO__TicketDoesNotExist();
+    //     }
+
+    //     if(ticket.hasClaimedPrize) {
+    //         revert LOTTO__ALLREADY_CLAIMED();
+    //     }
+    // }
+
+    /*
+     * @TODO: Save the requestId
+     */
     function pickNumbers( ) external {
         if(s_state == LottoState.CALCULATING_WINNERS) {
             revert LOTTO__LottoIsNotOpen();
@@ -131,7 +177,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
 
         s_state = LottoState.CALCULATING_WINNERS;
 
-        (uint256 requestId) = s_vrfCoordinator.requestRandomWords(
+        s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: s_keyHash,
                 subId: s_subscriptionId,
@@ -143,7 +189,134 @@ contract Lotto is VRFConsumerBaseV2Plus {
         );
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {}
+    function fulfillRandomWords(uint256, uint256[] calldata randomWords) internal override{
+        _parseNumbers(randomWords);
+        _destibutePrizesToTickets();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            PRIVATE FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    /**
+     * @dev Parse the random words to numbers in range from 1 to i_maxNumber and save them to the state
+     * @param randomWords The random words to parse
+     */
+    function _parseNumbers(uint256[] calldata randomWords) private {
+        s_state = LottoState.CALCULATING_WINNERS;
+
+        bool[] memory pickedNumbers = new bool[](i_maxNumber + 1);
+        uint8[] memory numbers = new uint8[](i_numbersLength);
+        uint16 counter = 0;
+
+        for(uint256 i = 0; i < randomWords.length; i++) {
+            uint8 number = uint8(randomWords[i] % i_maxNumber) + 1;
+
+            if(counter == i_numbersLength) {
+                break;
+            }
+
+            if(!pickedNumbers[number]) {
+                pickedNumbers[number] = true;
+                numbers[counter] = number;
+                counter++;
+            }
+        }
+
+        if(counter != i_numbersLength) {
+            revert LOTTO__NotEnoughUniqueNumbers();
+        }
+
+        s_winningNumbers = numbers;
+        s_state = LottoState.OPEN;
+    }
+
+    /**
+     * @dev Destributes the prizes to the tickets
+     */
+    function _destibutePrizesToTickets() private {
+        uint256 numberOfParticipants = s_participants.length;
+        uint256 numbersOfThree = 0;
+        uint256 numbersOfFour = 0;
+        uint256 numbersOfFive = 0;
+        uint256 numbersOfSix = 0;
+
+        for(uint256 i = 0; i < numberOfParticipants; i++) {
+            Ticket storage ticket = s_tickets[s_participants[i]];
+            uint matchCount = _calculateMatchCount(ticket.numbers);
+
+            if (matchCount == 0 || matchCount == 1 || matchCount == 2) {
+                ticket.prize = 0;
+            } else if (matchCount == 3) {
+                ticket.prizeLevel = PRIZE_LEVELS.THREE;
+                numbersOfThree++;
+            } else if (matchCount == 4) {
+                ticket.prizeLevel = PRIZE_LEVELS.FOUR;
+                numbersOfFour++;
+            } else if (matchCount == 5) {
+                ticket.prizeLevel = PRIZE_LEVELS.FIVE;
+                numbersOfFive++;
+            } else if (matchCount == 6) {
+                ticket.prizeLevel = PRIZE_LEVELS.SIX;
+                numbersOfSix++;
+            }
+        }
+
+        (uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix) = _calculatePrizeByLevel(numbersOfThree, numbersOfFour, numbersOfFive, numbersOfSix);
+
+        for(uint256 i = 0; i < numberOfParticipants; i++) {
+            Ticket storage ticket = s_tickets[s_participants[i]];
+
+            if (ticket.prizeLevel == PRIZE_LEVELS.THREE) {
+                ticket.prize = prizeAmountByLevelThree;
+            } else if (ticket.prizeLevel == PRIZE_LEVELS.FOUR) {
+                ticket.prize = prizeAmountByLevelFour;
+            } else if (ticket.prizeLevel == PRIZE_LEVELS.FIVE) {
+                ticket.prize = prizeAmountByLevelFive;
+            } else if (ticket.prizeLevel == PRIZE_LEVELS.SIX) {
+                ticket.prize = prizeAmountByLevelSix;
+            }
+        }
+    }
+
+    /**
+     * @dev Calculates the prize amount for each prize level
+     * @param _numbersOfThree The number of tickets with 3 winning numbers
+     * @param _numbersOfFour The number of tickets with 4 winning numbers
+     * @param _numbersOfFive The number of tickets with 5 winning numbers
+     * @param _numbersOfSix The number of tickets with 6 winning numbers
+     * @return The prize amount for each prize level
+     */
+    function _calculatePrizeByLevel(uint256 _numbersOfThree, uint256 _numbersOfFour, uint256 _numbersOfFive, uint256 _numbersOfSix) view private returns(uint256, uint256, uint256, uint256) {
+        uint256 prizeAmountByLevelSix = 0;
+        uint256 prizeAmountByLevelFive = 0;
+        uint256 prizeAmountByLevelFour = 0;
+        uint256 prizeAmountByLevelThree = 0;
+
+        if(_numbersOfThree > 0) {
+            prizeAmountByLevelThree = (s_totalJackpot * (THREE_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfThree;
+        } else if(_numbersOfFour > 0) {
+            prizeAmountByLevelFour = (s_totalJackpot * (FOUR_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfFour;
+        } else if(_numbersOfFive > 0) {
+            prizeAmountByLevelFive = (s_totalJackpot * (FIVE_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfFive;
+        } else if(_numbersOfSix > 0) {
+            prizeAmountByLevelSix = (s_totalJackpot * (SIX_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfSix;
+        }
+
+        return (prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix);
+    }
+
+    function _calculateMatchCount(uint8[6] memory _userNumbers) private view returns (uint) {
+        uint matchCount = 0;
+        for (uint i = 0; i < 6; i++) {
+            for (uint j = 0; j < 6; j++) {
+                if (_userNumbers[i] == s_winningNumbers[j]) {
+                    matchCount++;
+                    break; // Stop once a match is found
+                }
+            }
+        }
+        return matchCount;
+    }
 
     /*//////////////////////////////////////////////////////////////
                           GETTERS FUNCTIONS
