@@ -91,12 +91,12 @@ contract Lotto is VRFConsumerBaseV2Plus {
     mapping(address => Ticket) private s_tickets;
     address[] private s_participants;
 
-    uint8[] public s_winningNumbers;
-
     /*//////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
     event NewParticipantEntered();
+    event PrizeLevelCalculated(uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix);
+    event WinningNumbers(uint8[6] winningNumbers);
 
     constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId, bytes32 _keyHash, uint16 _requestConfirmations, uint32 _callbackGasLimit) VRFConsumerBaseV2Plus(vrfCoordinator) {
         i_entryFee = _entryFee;
@@ -115,7 +115,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
     /*//////////////////////////////////////////////////////////////
                            EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
-    function enter(uint8[6] memory _numbers) external payable {
+    function enterLotto(uint8[6] memory _numbers) external payable {
         if(s_state != LottoState.OPEN) {
             revert LOTTO__LottoIsNotOpen();
         }
@@ -190,8 +190,9 @@ contract Lotto is VRFConsumerBaseV2Plus {
     }
 
     function fulfillRandomWords(uint256, uint256[] calldata randomWords) internal override{
-        _parseNumbers(randomWords);
-        _destibutePrizesToTickets();
+        uint8[6] memory winningNumbers = _parseNumbers(randomWords);
+        emit WinningNumbers(winningNumbers);
+        _destibutePrizesToTickets(winningNumbers);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -199,17 +200,17 @@ contract Lotto is VRFConsumerBaseV2Plus {
     //////////////////////////////////////////////////////////////*/
     /**
      * @dev Parse the random words to numbers in range from 1 to i_maxNumber and save them to the state
-     * @param randomWords The random words to parse
+     * @param _randomWords The random words to parse
      */
-    function _parseNumbers(uint256[] calldata randomWords) private {
+    function _parseNumbers(uint256[] calldata _randomWords) internal returns(uint8[6] memory) {
         s_state = LottoState.CALCULATING_WINNERS;
 
         bool[] memory pickedNumbers = new bool[](i_maxNumber + 1);
-        uint8[] memory numbers = new uint8[](i_numbersLength);
+        uint8[6] memory winningNumbers;
         uint16 counter = 0;
 
-        for(uint256 i = 0; i < randomWords.length; i++) {
-            uint8 number = uint8(randomWords[i] % i_maxNumber) + 1;
+        for(uint256 i = 0; i < _randomWords.length; i++) {
+            uint8 number = uint8(_randomWords[i] % i_maxNumber) + 1;
 
             if(counter == i_numbersLength) {
                 break;
@@ -217,7 +218,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
 
             if(!pickedNumbers[number]) {
                 pickedNumbers[number] = true;
-                numbers[counter] = number;
+                winningNumbers[counter] = number;
                 counter++;
             }
         }
@@ -226,14 +227,13 @@ contract Lotto is VRFConsumerBaseV2Plus {
             revert LOTTO__NotEnoughUniqueNumbers();
         }
 
-        s_winningNumbers = numbers;
-        s_state = LottoState.OPEN;
+        return winningNumbers;
     }
 
     /**
      * @dev Destributes the prizes to the tickets
      */
-    function _destibutePrizesToTickets() private {
+    function _destibutePrizesToTickets(uint8[6] memory _winningNumbers) internal {
         uint256 numberOfParticipants = s_participants.length;
         uint256 numbersOfThree = 0;
         uint256 numbersOfFour = 0;
@@ -242,7 +242,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
 
         for(uint256 i = 0; i < numberOfParticipants; i++) {
             Ticket storage ticket = s_tickets[s_participants[i]];
-            uint matchCount = _calculateMatchCount(ticket.numbers);
+            uint matchCount = _calculateMatchCount(ticket.numbers, _winningNumbers);
 
             if (matchCount == 0 || matchCount == 1 || matchCount == 2) {
                 ticket.prize = 0;
@@ -286,30 +286,37 @@ contract Lotto is VRFConsumerBaseV2Plus {
      * @param _numbersOfSix The number of tickets with 6 winning numbers
      * @return The prize amount for each prize level
      */
-    function _calculatePrizeByLevel(uint256 _numbersOfThree, uint256 _numbersOfFour, uint256 _numbersOfFive, uint256 _numbersOfSix) view private returns(uint256, uint256, uint256, uint256) {
+    function _calculatePrizeByLevel(uint256 _numbersOfThree, uint256 _numbersOfFour, uint256 _numbersOfFive, uint256 _numbersOfSix) internal returns(uint256, uint256, uint256, uint256) {
         uint256 prizeAmountByLevelSix = 0;
         uint256 prizeAmountByLevelFive = 0;
         uint256 prizeAmountByLevelFour = 0;
         uint256 prizeAmountByLevelThree = 0;
 
         if(_numbersOfThree > 0) {
-            prizeAmountByLevelThree = (s_totalJackpot * (THREE_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfThree;
+            prizeAmountByLevelThree = ((s_totalJackpot * THREE_NUMBERS_PRIZE_PERCENT) / 100) / _numbersOfThree;
         } else if(_numbersOfFour > 0) {
-            prizeAmountByLevelFour = (s_totalJackpot * (FOUR_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfFour;
+            prizeAmountByLevelFour = ((s_totalJackpot * FOUR_NUMBERS_PRIZE_PERCENT) / 100) / _numbersOfFour;
         } else if(_numbersOfFive > 0) {
-            prizeAmountByLevelFive = (s_totalJackpot * (FIVE_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfFive;
+            prizeAmountByLevelFive = ((s_totalJackpot * FIVE_NUMBERS_PRIZE_PERCENT) / 100) / _numbersOfFive;
         } else if(_numbersOfSix > 0) {
-            prizeAmountByLevelSix = (s_totalJackpot * (SIX_NUMBERS_PRIZE_PERCENT / 100)) / _numbersOfSix;
+            prizeAmountByLevelSix = ((s_totalJackpot * SIX_NUMBERS_PRIZE_PERCENT) / 100) / _numbersOfSix;
         }
+
+        emit PrizeLevelCalculated(prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix);
 
         return (prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix);
     }
 
-    function _calculateMatchCount(uint8[6] memory _userNumbers) private view returns (uint) {
-        uint matchCount = 0;
+    /**
+     * @dev Calculates the number of matches between the user's numbers and the winning numbers
+     * @param _userNumbers The user's numbers
+     * @return The number of matches
+     */
+    function _calculateMatchCount(uint8[6] memory _userNumbers, uint8[6] memory _winningNumbers) internal pure returns (uint8) {
+        uint8 matchCount = 0;
         for (uint i = 0; i < 6; i++) {
             for (uint j = 0; j < 6; j++) {
-                if (_userNumbers[i] == s_winningNumbers[j]) {
+                if (_userNumbers[i] == _winningNumbers[j]) {
                     matchCount++;
                     break; // Stop once a match is found
                 }
@@ -331,5 +338,9 @@ contract Lotto is VRFConsumerBaseV2Plus {
 
     function getTicket(address _address) public view returns(Ticket memory) {
         return s_tickets[_address];
+    }
+
+    function getPrizePercentages() public pure returns(uint256, uint256, uint256, uint256) {
+        return (THREE_NUMBERS_PRIZE_PERCENT, FOUR_NUMBERS_PRIZE_PERCENT, FIVE_NUMBERS_PRIZE_PERCENT, SIX_NUMBERS_PRIZE_PERCENT);
     }
 }
