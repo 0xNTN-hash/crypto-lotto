@@ -134,7 +134,7 @@ contract LottoTest is Test, CodeConstants {
         assertEq(prizeAmountByLevelThree, ((totalJackpot * threeNumbersPrizePercent) / 100) / totalParticipants);
     }
 
-    function testCalculateNumberOfMatchingAllNumbers() public {
+    function testCalculateNumberOfMatchingAllNumbers() public view {
         uint8[6] memory userNumbers = [27, 45, 36, 9, 26, 48];
         uint8[6] memory winningNumbers = [27, 45, 36, 9, 26, 48];
 
@@ -143,7 +143,7 @@ contract LottoTest is Test, CodeConstants {
         assertEq(numberOfMatchingNumbers, 6);
     }
 
-    function testCalculateNumberOfMatchingNoNumbers() public {
+    function testCalculateNumberOfMatchingNoNumbers() public view {
         uint8[6] memory userNumbers = [27, 45, 36, 9, 26, 48];
         uint8[6] memory winningNumbers = [1, 2, 3, 4, 5, 6];
 

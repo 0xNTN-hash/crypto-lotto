@@ -23,10 +23,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
-contract Lotto is VRFConsumerBaseV2Plus {
+contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -37,6 +38,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
     error LOTTO__NotEnoughUniqueNumbers();
     error LOTTO__ALLREADY_CLAIMED();
     error LOTTO__TicketDoesNotExist();
+    error LOTTO__CLAIM_PRIZE_FAILED();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTANTS
@@ -95,9 +97,12 @@ contract Lotto is VRFConsumerBaseV2Plus {
                             EVENTS
     //////////////////////////////////////////////////////////////*/
     event NewParticipantEntered();
-    event PrizeLevelCalculated(uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix);
     event WinningNumbers(uint8[6] winningNumbers);
+    event PrizeLevelCalculated(uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix);
 
+    /*//////////////////////////////////////////////////////////////
+                            CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
     constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId, bytes32 _keyHash, uint16 _requestConfirmations, uint32 _callbackGasLimit) VRFConsumerBaseV2Plus(vrfCoordinator) {
         i_entryFee = _entryFee;
         i_intervalBetweenDraws = _intervalBetweenDraws;
@@ -115,7 +120,7 @@ contract Lotto is VRFConsumerBaseV2Plus {
     /*//////////////////////////////////////////////////////////////
                            EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
-    function enterLotto(uint8[6] memory _numbers) external payable {
+    function enterLotto(uint8[6] memory _numbers) external payable nonReentrant {
         if(s_state != LottoState.OPEN) {
             revert LOTTO__LottoIsNotOpen();
         }
@@ -151,21 +156,42 @@ contract Lotto is VRFConsumerBaseV2Plus {
         emit NewParticipantEntered();
     }
 
-    // function checkMyNumbers() external view returns(bool) {
-    //     if(s_state != LottoState.OPEN) {
-    //         revert LOTTO__LottoIsNotOpen();
-    //     }
+    function getMyTicket() external view returns(Ticket memory) {
+        Ticket memory ticket = s_tickets[msg.sender];
 
-    //     Ticket memory ticket = s_tickets[msg.sender];
+        if(ticket.numbers[0] == 0) {
+            revert LOTTO__TicketDoesNotExist();
+        }
 
-    //     if(ticket.numbers[0] == 0) {
-    //         revert LOTTO__TicketDoesNotExist();
-    //     }
+        if(ticket.hasClaimedPrize) {
+            revert LOTTO__ALLREADY_CLAIMED();
+        }
 
-    //     if(ticket.hasClaimedPrize) {
-    //         revert LOTTO__ALLREADY_CLAIMED();
-    //     }
-    // }
+        return ticket;
+    }
+
+    function claimPrize() external nonReentrant {
+        // if(s_state != LottoState.OPEN) {
+        //     revert LOTTO__LottoIsNotOpen();
+        // }
+
+        Ticket memory ticket = s_tickets[msg.sender];
+
+        if(ticket.numbers[0] == 0) {
+            revert LOTTO__TicketDoesNotExist();
+        }
+
+        if(ticket.hasClaimedPrize) {
+            revert LOTTO__ALLREADY_CLAIMED();
+        }
+
+        ticket.hasClaimedPrize = true;
+        (bool success, ) = payable(msg.sender).call{value: ticket.prize}("");
+
+        if(!success) {
+            revert LOTTO__CLAIM_PRIZE_FAILED();
+        }
+    }
 
     /*
      * @TODO: Save the requestId
