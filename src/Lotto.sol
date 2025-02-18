@@ -27,6 +27,12 @@ import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/Reentrancy
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
+/**
+ * @title Lotto
+ * @author 0xNTN
+ * @notice Lottery contract for drawing random numbers and calculating prizes
+ * @dev Implements Chainlink VRFv2.5
+ */
 contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                             ERRORS
@@ -39,6 +45,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     error LOTTO__ALLREADY_CLAIMED();
     error LOTTO__TicketDoesNotExist();
     error LOTTO__CLAIM_PRIZE_FAILED();
+    error LOTTO__UpkeepNotNeeded();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTANTS
@@ -65,6 +72,21 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
         SIX
     }
 
+    struct LottoConfig {
+        uint256 entryFee;
+        uint256 intervalBetweenDraws;
+        uint256 numbersLength;
+        uint256 maxNumber;
+        uint256 minNumber;
+        uint256 lottoTaxPercent;
+        address vrfCoordinator;
+        uint64 subscriptionId;
+        bytes32 gasLane;
+        uint16 requestConfirmations;
+        uint32 callbackGasLimit;
+        uint32 numberOfWords;
+    }
+
     struct Ticket {
         uint8[6] numbers;
         bool hasClaimedPrize;
@@ -84,26 +106,30 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
     string private s_version = "1.0.0";
     uint256 private s_subscriptionId;
-    bytes32 private s_keyHash;
+    bytes32 private s_gasLane;
     uint16 private s_requestConfirmations;
+    uint32 private s_numberOfWords;
     uint32 private s_callbackGasLimit;
     uint256 private s_totalJackpot;
     uint256 private s_numberOfParticipants;
     LottoState private s_state;
     mapping(address => Ticket) private s_tickets;
     address[] private s_participants;
+    // uint32[] private s_prevDrawsTimeStamps;
+    // uint32 private s_lastDrawTimeStamp;
 
     /*//////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
     event NewParticipantEntered();
     event WinningNumbers(uint8[6] winningNumbers);
+    event RequestedNumbersDraw(uint256 requestId);
     event PrizeLevelCalculated(uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix);
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
-    constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId, bytes32 _keyHash, uint16 _requestConfirmations, uint32 _callbackGasLimit) VRFConsumerBaseV2Plus(vrfCoordinator) {
+    constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId,  bytes32 _gasLane,  uint16 _requestConfirmations, uint32 _callbackGasLimit, uint32 _numberOfWords) VRFConsumerBaseV2Plus(vrfCoordinator) {
         i_entryFee = _entryFee;
         i_intervalBetweenDraws = _intervalBetweenDraws;
         i_numbersLength = _numbersLength;
@@ -112,8 +138,9 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
         i_lottoTaxPercent = _lottoTaxPercent;
 
         s_subscriptionId = _subscriptionId;
-        s_keyHash = _keyHash;
+        s_gasLane = _gasLane;
         s_requestConfirmations = _requestConfirmations;
+        s_numberOfWords = _numberOfWords;
         s_callbackGasLimit = _callbackGasLimit;
     }
 
@@ -193,37 +220,85 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
         }
     }
 
-    /*
-     * @TODO: Save the requestId
+    /**
+     * @dev Callback function that is called by the VRF coordinator when the random words are ready
+     * @param - ignore request id
+     * @param randomWords The random words
      */
-    function pickNumbers( ) external {
+    function fulfillRandomWords(uint256 /* requestId */, uint256[] calldata randomWords) internal override{
+        uint8[6] memory winningNumbers = _parseNumbers(randomWords);
+        emit WinningNumbers(winningNumbers);
+
+        _destibutePrizesToTickets(winningNumbers);
+        _prepareNextLotto();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            PUBLIC FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    /**
+     * @dev Checks if there is enough ETH to perform an upkeep.
+     * @param - ignore checkData Data to be passed to the checkUpkeep function
+     * @return upkeepNeeded Whether an upkeep is needed
+     * @return - ignore performData Data to be passed to the performUpkeep function
+     */
+    function checkUpkeep(bytes memory /* checkData */) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
+        // TODO implement checkUpkeep
+        upkeepNeeded = s_state == LottoState.OPEN;
+
+        return (upkeepNeeded, "");
+    }
+
+    /**
+     * @dev Performs an upkeep.
+     * @param - ignore performData Data to be passed to the performUpkeep function
+     */
+    function performUpkeep(bytes calldata /* performData */) external {
+        (bool upkeepNeeded, ) = checkUpkeep("");
+        if(!upkeepNeeded) {
+            revert LOTTO__UpkeepNotNeeded();
+        }
+
+        _pickNumbers();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            PRIVATE FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    /**
+     * @dev Requests the VRF coordinator to generate random numbers
+     */
+    function _pickNumbers( ) internal {
         if(s_state == LottoState.CALCULATING_WINNERS) {
             revert LOTTO__LottoIsNotOpen();
         }
 
         s_state = LottoState.CALCULATING_WINNERS;
 
-        s_vrfCoordinator.requestRandomWords(
-            VRFV2PlusClient.RandomWordsRequest({
-                keyHash: s_keyHash,
+        VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient.RandomWordsRequest({
+                keyHash: s_gasLane,
                 subId: s_subscriptionId,
                 requestConfirmations: s_requestConfirmations,
                 callbackGasLimit: s_callbackGasLimit,
                 numWords: i_numbersLength,
-                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: false}))
-            })
-        );
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                )
+            });
+
+        (uint256 requestId) = s_vrfCoordinator.requestRandomWords(request);
+        emit RequestedNumbersDraw(requestId);
     }
 
-    function fulfillRandomWords(uint256, uint256[] calldata randomWords) internal override{
-        uint8[6] memory winningNumbers = _parseNumbers(randomWords);
-        emit WinningNumbers(winningNumbers);
-        _destibutePrizesToTickets(winningNumbers);
-    }
+    /**
+     * @dev Prepares the next lotto by resetting the state TODO
+     */
+    function _prepareNextLotto() internal {
+        s_state = LottoState.OPEN;
 
-    /*//////////////////////////////////////////////////////////////
-                            PRIVATE FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
+
+    }
     /**
      * @dev Parse the random words to numbers in range from 1 to i_maxNumber and save them to the state
      * @param _randomWords The random words to parse
@@ -258,6 +333,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
     /**
      * @dev Destributes the prizes to the tickets
+     * @param _winningNumbers The winning numbers
      */
     function _destibutePrizesToTickets(uint8[6] memory _winningNumbers) internal {
         uint256 numberOfParticipants = s_participants.length;

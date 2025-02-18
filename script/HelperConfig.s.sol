@@ -2,8 +2,18 @@
 pragma solidity ^0.8.20;
 
 import {Script} from "forge-std/Script.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {LinkToken} from "test/mocks/LinkToken.sol";
 
 abstract contract CodeConstants {
+    /* Mock VRF Values */
+    uint96 public MOCK_BASE_FEE = 0.25 ether;
+    uint96 public MOCK_GAS_PRICE = 1e9;
+    int256 public MOCK_WEI_PER_UNIT_LINK = 4e15;
+
+    uint16 public REQUEST_CONFIRMATIONS = 3;
+    uint32 public NUMBER_OF_WORDS = 10;
+
     uint256 public constant ETH_SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant LOCAL_CHAIN_ID = 31337;
 
@@ -13,13 +23,6 @@ abstract contract CodeConstants {
     uint8 constant MIN_NUMBER = 1;
     uint8 constant MAX_NUMBER = 49;
     uint8 constant LOTTO_TAX_PERCENT = 5;
-
-    uint256 constant SUBSCRIPTION_ID = 0;
-    address constant VRF_COORDINATOR = 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B; // Mock address
-    bytes32 constant KEY_HASH = 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae;  // Mock Hash
-    uint32 constant CALLBACK_GAS_LIMIT = 40000;
-    uint16 constant REQUEST_CONFIRMATIONS = 3;
-    uint32 constant NUM_WORDS =  10;
 }
 
 contract HelperConfig is Script, CodeConstants {
@@ -30,6 +33,14 @@ contract HelperConfig is Script, CodeConstants {
         uint8 maxNumber;
         uint8 minNumber;
         uint8 lottoTaxPercent;
+
+        uint256 subscriptionId;
+        bytes32 gasLane;
+        address vrfCoordinator;
+        uint32 callbackGasLimit;
+        address linkToken;
+        uint16 requestConfirmations;
+        uint32 numberOfWords;
     }
 
     mapping(uint256 networkId => NetworkConfig) public networkConfigs;
@@ -43,25 +54,52 @@ contract HelperConfig is Script, CodeConstants {
         return networkConfigs[block.chainid];
     }
 
-    function getSepoliaNetworkConfig() public pure returns (NetworkConfig memory) {
+    function getSepoliaNetworkConfig() public view returns (NetworkConfig memory) {
         return NetworkConfig({
             entryFee: ENTRY_FEE,
             intervalBetweenDraws: INTERVAL_BETWEEN_DRAWS,
             numbersLength: NUMBERS_LENGTH,
             maxNumber: MAX_NUMBER,
             minNumber: MIN_NUMBER,
-            lottoTaxPercent: LOTTO_TAX_PERCENT
+            lottoTaxPercent: LOTTO_TAX_PERCENT,
+
+            subscriptionId: 34042810828593219769144622732293790626710322245458304082360765885856430959261,
+            gasLane: 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae,
+            vrfCoordinator: 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B,
+            callbackGasLimit: 500000,
+            numberOfWords: NUMBER_OF_WORDS,
+            requestConfirmations: REQUEST_CONFIRMATIONS,
+            linkToken: 0x779877A7B0D9E8603169DdbD7836e478b4624789
+
         });
     }
 
-    function getOrCreateAnvilNetworkConfig() public pure returns (NetworkConfig memory) {
+    function getOrCreateAnvilNetworkConfig() public returns (NetworkConfig memory) {
+        if(networkConfigs[LOCAL_CHAIN_ID].vrfCoordinator != address(0)) {
+            return networkConfigs[LOCAL_CHAIN_ID];
+        }
+
+        vm.startBroadcast();
+        VRFCoordinatorV2_5Mock vrfCoordinatorMock = new VRFCoordinatorV2_5Mock(MOCK_BASE_FEE, MOCK_GAS_PRICE, MOCK_WEI_PER_UNIT_LINK);
+        LinkToken linkTokenMock = new LinkToken();
+        vm.stopBroadcast();
+
+
         return NetworkConfig({
             entryFee: ENTRY_FEE,
             intervalBetweenDraws: INTERVAL_BETWEEN_DRAWS,
             numbersLength: NUMBERS_LENGTH,
             maxNumber: MAX_NUMBER,
             minNumber: MIN_NUMBER,
-            lottoTaxPercent: LOTTO_TAX_PERCENT
+            lottoTaxPercent: LOTTO_TAX_PERCENT,
+
+            subscriptionId: 0,
+            gasLane: 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae,
+            vrfCoordinator: address(vrfCoordinatorMock),
+            numberOfWords: NUMBER_OF_WORDS,
+            callbackGasLimit: 500000,
+            requestConfirmations: REQUEST_CONFIRMATIONS,
+            linkToken: address(linkTokenMock) // Mock address
         });
     }
 }

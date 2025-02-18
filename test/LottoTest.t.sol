@@ -1,15 +1,27 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.20;
 
-import {console} from "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 import {TestLotto} from "./TestLotto.sol";
 import {Lotto} from "../src/Lotto.sol";
 import {CodeConstants} from "../script/HelperConfig.s.sol";
+import {DeployLotto} from "../script/DeployLotto.s.sol";
+import {HelperConfig} from "../script/HelperConfig.s.sol";
 
-contract LottoTest is Test, CodeConstants {
+contract LottoTest is Test {
     TestLotto lotto;
+    HelperConfig helperConfig;
+    DeployLotto deployer;
+
+    uint256 entryFee;
+    uint256 intervalBetweenDraws;
+    uint8 numbersLength;
+    uint8 maxNumber;
+    uint8 minNumber;
+    uint8 lottoTaxPercent;
+
     address PLAYER = makeAddr('player');
+
     uint8[6] playerNumbers = [27, 45, 36, 9, 26, 48];
     uint8[6] playerInvalidNumbers = [27, 45, 36, 9, 0, 48];
     uint256[] randomNumbers = [
@@ -27,27 +39,37 @@ contract LottoTest is Test, CodeConstants {
 
 
     function setUp() public {
-        lotto = new TestLotto(ENTRY_FEE, INTERVAL_BETWEEN_DRAWS, NUMBERS_LENGTH, MAX_NUMBER, MIN_NUMBER, LOTTO_TAX_PERCENT, VRF_COORDINATOR, SUBSCRIPTION_ID, KEY_HASH, REQUEST_CONFIRMATIONS, CALLBACK_GAS_LIMIT);
+        deployer = new DeployLotto();
+        (lotto, helperConfig) = deployer.deployTestLotto();
 
-        vm.deal(PLAYER, ENTRY_FEE*10);
+        HelperConfig.NetworkConfig memory networkConfig = helperConfig.getNetworkConfig();
+
+        entryFee = networkConfig.entryFee;
+        intervalBetweenDraws = networkConfig.intervalBetweenDraws;
+        numbersLength = networkConfig.numbersLength;
+        maxNumber = networkConfig.maxNumber;
+        minNumber = networkConfig.minNumber;
+        lottoTaxPercent = networkConfig.lottoTaxPercent;
+
+        vm.deal(PLAYER, entryFee*10);
     }
 
     function testCorrectJackpot() public {
         uint256 initialBalance = lotto.getTotalJackpot();
         vm.startPrank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
         vm.stopPrank();
 
         uint256 totalJackpot = lotto.getTotalJackpot();
 
-        assertEq(totalJackpot, initialBalance + ENTRY_FEE * 2);
+        assertEq(totalJackpot, initialBalance + entryFee * 2);
     }
 
     function testCorrectNumberOfParticipants() public {
         vm.startPrank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
         vm.stopPrank();
 
         uint256 numberOfParticipants = lotto.getNumberOfParticipants();
@@ -57,7 +79,7 @@ contract LottoTest is Test, CodeConstants {
 
     function testSuccessfulEntrance() public {
         vm.prank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
 
         uint256 numberOfParticipants = lotto.getNumberOfParticipants();
         TestLotto.Ticket memory ticket = lotto.getTicket(PLAYER);
@@ -70,24 +92,24 @@ contract LottoTest is Test, CodeConstants {
     }
 
     function testLottoRevertsIfLowerEntryFee() public {
-        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__WrongFee.selector, string(abi.encodePacked("Entry fee must be ", ENTRY_FEE))));
+        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__WrongFee.selector, string(abi.encodePacked("Entry fee must be ", entryFee))));
 
         vm.prank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE - 1}(playerNumbers);
+        lotto.enterLotto{value: entryFee - 1}(playerNumbers);
     }
 
     function testLottoRevertsIfHigherEntryFee() public {
-        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__WrongFee.selector, string(abi.encodePacked("Entry fee must be ", ENTRY_FEE))));
+        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__WrongFee.selector, string(abi.encodePacked("Entry fee must be ", entryFee))));
 
         vm.prank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE + 10}(playerNumbers);
+        lotto.enterLotto{value: entryFee + 10}(playerNumbers);
     }
 
     function testLottoRevertsIfEnterInvalidNumber() public {
-        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__InvalidNumber.selector, string(abi.encodePacked("Numbers must be between ", MIN_NUMBER, " and ", MAX_NUMBER))));
+        vm.expectRevert(abi.encodeWithSelector(Lotto.LOTTO__InvalidNumber.selector, string(abi.encodePacked("Numbers must be between ", minNumber, " and ", maxNumber))));
 
         vm.prank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerInvalidNumbers);
+        lotto.enterLotto{value: entryFee}(playerInvalidNumbers);
     }
 
     function testRandomNumbersConversion() public {
@@ -101,26 +123,24 @@ contract LottoTest is Test, CodeConstants {
 
     function testCalculatedPrizesTwoPeopleWinJackpot() public {
         vm.startPrank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
         vm.stopPrank();
 
         (, , , uint256 sixNumbersPrizePercent) = lotto.getPrizePercentages();
         uint256 totalJackpot = lotto.getTotalJackpot();
         uint256 totalParticipants = lotto.getNumberOfParticipants();
 
-
         (, , , uint256 prizeAmountByLevelSix) = lotto.test_CalculatePrizeByLevel(0, 0, 0, totalParticipants);
-
 
         assertEq(prizeAmountByLevelSix, ((totalJackpot * sixNumbersPrizePercent) / 100) / totalParticipants);
     }
 
     function testCalculatedPrizesThreePeopleWinLevelThree() public {
         vm.startPrank(PLAYER);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
-        lotto.enterLotto{value: ENTRY_FEE}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
         vm.stopPrank();
 
         (uint256 threeNumbersPrizePercent, , , ) = lotto.getPrizePercentages();
@@ -150,5 +170,14 @@ contract LottoTest is Test, CodeConstants {
         uint8 numberOfMatchingNumbers = lotto.test_CalculateMatchCount(userNumbers, winningNumbers);
 
         assertEq(numberOfMatchingNumbers, 0);
+    }
+
+    function testWholeFlow() public {
+        vm.startPrank(PLAYER);
+        lotto.enterLotto{value: entryFee}(playerNumbers);
+        vm.stopPrank();
+
+        lotto.performUpkeep("");
+
     }
 }
