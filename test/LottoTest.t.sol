@@ -8,7 +8,7 @@ import {CodeConstants} from "../script/HelperConfig.s.sol";
 import {DeployLotto} from "../script/DeployLotto.s.sol";
 import {HelperConfig} from "../script/HelperConfig.s.sol";
 
-contract LottoTest is Test {
+contract LottoTest is Test, CodeConstants {
     TestLotto lotto;
     HelperConfig helperConfig;
     DeployLotto deployer;
@@ -41,15 +41,12 @@ contract LottoTest is Test {
     function setUp() public {
         deployer = new DeployLotto();
         (lotto, helperConfig) = deployer.deployTestLotto();
-
-        HelperConfig.NetworkConfig memory networkConfig = helperConfig.getNetworkConfig();
-
-        entryFee = networkConfig.entryFee;
-        intervalBetweenDraws = networkConfig.intervalBetweenDraws;
-        numbersLength = networkConfig.numbersLength;
-        maxNumber = networkConfig.maxNumber;
-        minNumber = networkConfig.minNumber;
-        lottoTaxPercent = networkConfig.lottoTaxPercent;
+        entryFee = CodeConstants.ENTRY_FEE;
+        intervalBetweenDraws = CodeConstants.INTERVAL_BETWEEN_DRAWS;
+        numbersLength = CodeConstants.NUMBERS_LENGTH;
+        maxNumber = CodeConstants.MAX_NUMBER;
+        minNumber = CodeConstants.MIN_NUMBER;
+        lottoTaxPercent = CodeConstants.LOTTO_TAX_PERCENT;
 
         vm.deal(PLAYER, entryFee*10);
     }

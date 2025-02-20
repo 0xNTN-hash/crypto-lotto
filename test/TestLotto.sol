@@ -5,7 +5,7 @@ import {Lotto} from "../src/Lotto.sol";
 import {CodeConstants} from "../script/HelperConfig.s.sol";
 
 contract TestLotto is Lotto, CodeConstants {
-    constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId,  bytes32 _gasLane,  uint16 _requestConfirmations, uint32 _callbackGasLimit, uint32 _numberOfWords) Lotto(_entryFee, _intervalBetweenDraws, _numbersLength, _maxNumber, _minNumber, _lottoTaxPercent, vrfCoordinator, _subscriptionId, _gasLane, _requestConfirmations, _callbackGasLimit, _numberOfWords) {}
+    constructor(LottoConfig memory _config) Lotto(_config) {}
 
     function test_FulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) public{
         fulfillRandomWords(requestId, randomWords);

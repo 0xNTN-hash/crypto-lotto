@@ -28,12 +28,7 @@ abstract contract CodeConstants {
 contract HelperConfig is Script, CodeConstants {
     struct NetworkConfig {
         uint256 entryFee;
-        uint256 intervalBetweenDraws;
-        uint8 numbersLength;
-        uint8 maxNumber;
-        uint8 minNumber;
         uint8 lottoTaxPercent;
-
         uint256 subscriptionId;
         bytes32 gasLane;
         address vrfCoordinator;
@@ -41,6 +36,7 @@ contract HelperConfig is Script, CodeConstants {
         address linkToken;
         uint16 requestConfirmations;
         uint32 numberOfWords;
+        address account;
     }
 
     mapping(uint256 networkId => NetworkConfig) public networkConfigs;
@@ -56,21 +52,16 @@ contract HelperConfig is Script, CodeConstants {
 
     function getSepoliaNetworkConfig() public view returns (NetworkConfig memory) {
         return NetworkConfig({
-            entryFee: ENTRY_FEE,
-            intervalBetweenDraws: INTERVAL_BETWEEN_DRAWS,
-            numbersLength: NUMBERS_LENGTH,
-            maxNumber: MAX_NUMBER,
-            minNumber: MIN_NUMBER,
+            entryFee: 1 ether,
             lottoTaxPercent: LOTTO_TAX_PERCENT,
-
             subscriptionId: 34042810828593219769144622732293790626710322245458304082360765885856430959261,
             gasLane: 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae,
             vrfCoordinator: 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B,
             callbackGasLimit: 500000,
             numberOfWords: NUMBER_OF_WORDS,
             requestConfirmations: REQUEST_CONFIRMATIONS,
-            linkToken: 0x779877A7B0D9E8603169DdbD7836e478b4624789
-
+            linkToken: 0x779877A7B0D9E8603169DdbD7836e478b4624789,
+            account: 0x08392a7567C21d9E3CFAB81AA2CAe89a2D7285d7
         });
     }
 
@@ -86,20 +77,16 @@ contract HelperConfig is Script, CodeConstants {
 
 
         return NetworkConfig({
-            entryFee: ENTRY_FEE,
-            intervalBetweenDraws: INTERVAL_BETWEEN_DRAWS,
-            numbersLength: NUMBERS_LENGTH,
-            maxNumber: MAX_NUMBER,
-            minNumber: MIN_NUMBER,
+            entryFee: 1 ether,
             lottoTaxPercent: LOTTO_TAX_PERCENT,
-
             subscriptionId: 0,
             gasLane: 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae,
             vrfCoordinator: address(vrfCoordinatorMock),
             numberOfWords: NUMBER_OF_WORDS,
             callbackGasLimit: 500000,
             requestConfirmations: REQUEST_CONFIRMATIONS,
-            linkToken: address(linkTokenMock) // Mock address
+            linkToken: address(linkTokenMock),
+            account: 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38
         });
     }
 }

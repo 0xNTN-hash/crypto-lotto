@@ -74,13 +74,9 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
     struct LottoConfig {
         uint256 entryFee;
-        uint256 intervalBetweenDraws;
-        uint256 numbersLength;
-        uint256 maxNumber;
-        uint256 minNumber;
-        uint256 lottoTaxPercent;
+        uint8 lottoTaxPercent;
         address vrfCoordinator;
-        uint64 subscriptionId;
+        uint256 subscriptionId;
         bytes32 gasLane;
         uint16 requestConfirmations;
         uint32 callbackGasLimit;
@@ -97,26 +93,18 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
-    uint256 private immutable i_entryFee;
-    uint8 private immutable i_lottoTaxPercent;
-    uint256 private immutable i_intervalBetweenDraws;
-    uint32 private immutable i_numbersLength;
-    uint8 private immutable i_maxNumber;
-    uint8 private immutable i_minNumber;
+    LottoConfig private s_config;
+    uint256 private constant s_intervalBetweenDraws = 1 minutes;
+    uint32 private constant s_numbersLength = 6;
+    uint8 private constant s_maxNumber = 49;
+    uint8 private constant s_minNumber = 1;
 
     string private s_version = "1.0.0";
-    uint256 private s_subscriptionId;
-    bytes32 private s_gasLane;
-    uint16 private s_requestConfirmations;
-    uint32 private s_numberOfWords;
-    uint32 private s_callbackGasLimit;
     uint256 private s_totalJackpot;
     uint256 private s_numberOfParticipants;
     LottoState private s_state;
     mapping(address => Ticket) private s_tickets;
     address[] private s_participants;
-    // uint32[] private s_prevDrawsTimeStamps;
-    // uint32 private s_lastDrawTimeStamp;
 
     /*//////////////////////////////////////////////////////////////
                             EVENTS
@@ -129,19 +117,8 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
-    constructor(uint256 _entryFee, uint256 _intervalBetweenDraws, uint32 _numbersLength, uint8 _maxNumber, uint8 _minNumber, uint8 _lottoTaxPercent, address vrfCoordinator, uint256 _subscriptionId,  bytes32 _gasLane,  uint16 _requestConfirmations, uint32 _callbackGasLimit, uint32 _numberOfWords) VRFConsumerBaseV2Plus(vrfCoordinator) {
-        i_entryFee = _entryFee;
-        i_intervalBetweenDraws = _intervalBetweenDraws;
-        i_numbersLength = _numbersLength;
-        i_maxNumber = _maxNumber;
-        i_minNumber = _minNumber;
-        i_lottoTaxPercent = _lottoTaxPercent;
-
-        s_subscriptionId = _subscriptionId;
-        s_gasLane = _gasLane;
-        s_requestConfirmations = _requestConfirmations;
-        s_numberOfWords = _numberOfWords;
-        s_callbackGasLimit = _callbackGasLimit;
+    constructor(LottoConfig memory _config) VRFConsumerBaseV2Plus(_config.vrfCoordinator) {
+        s_config = _config;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -152,21 +129,21 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
             revert LOTTO__LottoIsNotOpen();
         }
 
-        if(msg.value != i_entryFee) {
-            revert LOTTO__WrongFee(string(abi.encodePacked("Entry fee must be ", i_entryFee)));
+        if(msg.value != s_config.entryFee) {
+            revert LOTTO__WrongFee(string(abi.encodePacked("Entry fee must be ", s_config.entryFee)));
         }
 
         /**
          * @note: Maybe can remove this check because of the fixed array size?
          * @todo: Deduct the lotto tax from the entry fee
          */
-        if(_numbers.length != i_numbersLength) {
+        if(_numbers.length != s_numbersLength) {
             revert LOTTO__InvalidNumbersLength();
         }
 
         for(uint256 i = 0; i < _numbers.length; i++) {
-            if(_numbers[i] < i_minNumber || _numbers[i] > i_maxNumber) {
-                revert LOTTO__InvalidNumber(string(abi.encodePacked("Numbers must be between ", i_minNumber, " and ", i_maxNumber)));
+            if(_numbers[i] < s_minNumber || _numbers[i] > s_maxNumber) {
+                revert LOTTO__InvalidNumber(string(abi.encodePacked("Numbers must be between ", s_minNumber, " and ", s_maxNumber)));
             }
         }
 
@@ -276,11 +253,11 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
         s_state = LottoState.CALCULATING_WINNERS;
 
         VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient.RandomWordsRequest({
-                keyHash: s_gasLane,
-                subId: s_subscriptionId,
-                requestConfirmations: s_requestConfirmations,
-                callbackGasLimit: s_callbackGasLimit,
-                numWords: i_numbersLength,
+                keyHash: s_config.gasLane,
+                subId: s_config.subscriptionId,
+                requestConfirmations: s_config.requestConfirmations,
+                callbackGasLimit: s_config.callbackGasLimit,
+                numWords: s_numbersLength,
                 extraArgs: VRFV2PlusClient._argsToBytes(
                     // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
                     VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
@@ -306,14 +283,14 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     function _parseNumbers(uint256[] calldata _randomWords) internal returns(uint8[6] memory) {
         s_state = LottoState.CALCULATING_WINNERS;
 
-        bool[] memory pickedNumbers = new bool[](i_maxNumber + 1);
+        bool[] memory pickedNumbers = new bool[](s_maxNumber + 1);
         uint8[6] memory winningNumbers;
         uint16 counter = 0;
 
         for(uint256 i = 0; i < _randomWords.length; i++) {
-            uint8 number = uint8(_randomWords[i] % i_maxNumber) + 1;
+            uint8 number = uint8(_randomWords[i] % s_maxNumber) + 1;
 
-            if(counter == i_numbersLength) {
+            if(counter == s_numbersLength) {
                 break;
             }
 
@@ -324,7 +301,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
             }
         }
 
-        if(counter != i_numbersLength) {
+        if(counter != s_numbersLength) {
             revert LOTTO__NotEnoughUniqueNumbers();
         }
 

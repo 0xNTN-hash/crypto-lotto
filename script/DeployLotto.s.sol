@@ -12,8 +12,19 @@ contract DeployLotto is Script {
         HelperConfig config = new HelperConfig();
         HelperConfig.NetworkConfig memory networkConfig = config.getNetworkConfig();
 
+        Lotto.LottoConfig memory lottoConfig = Lotto.LottoConfig({
+            entryFee: networkConfig.entryFee,
+            lottoTaxPercent: networkConfig.lottoTaxPercent,
+            vrfCoordinator: networkConfig.vrfCoordinator,
+            subscriptionId: networkConfig.subscriptionId,
+            gasLane: networkConfig.gasLane,
+            requestConfirmations: networkConfig.requestConfirmations,
+            callbackGasLimit: networkConfig.callbackGasLimit,
+            numberOfWords: networkConfig.numberOfWords
+        });
+
         vm.startBroadcast();
-        Lotto lotto = new Lotto(networkConfig.entryFee, networkConfig.intervalBetweenDraws, networkConfig.numbersLength, networkConfig.maxNumber, networkConfig.minNumber, networkConfig.lottoTaxPercent, networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.gasLane, networkConfig.requestConfirmations, networkConfig.callbackGasLimit, networkConfig.numberOfWords);
+        Lotto lotto = new Lotto(lottoConfig);
         vm.stopBroadcast();
 
         return (lotto, config);
@@ -25,30 +36,29 @@ contract DeployLotto is Script {
 
         if(networkConfig.subscriptionId == 0) {
             CreateSubscription createSubscription = new CreateSubscription();
-            networkConfig.subscriptionId = createSubscription.createSubscription(networkConfig.vrfCoordinator);
+            networkConfig.subscriptionId = createSubscription.createSubscription(networkConfig.vrfCoordinator, networkConfig.account);
 
             FundSubscription fundSubscription = new FundSubscription();
-            fundSubscription.fundSubscription(networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.linkToken);
+            fundSubscription.fundSubscription(networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.linkToken, networkConfig.account);
         }
 
-        vm.startBroadcast();
-        TestLotto lotto = new TestLotto(
-            networkConfig.entryFee,
-            networkConfig.intervalBetweenDraws,
-            networkConfig.numbersLength,
-            networkConfig.maxNumber,
-            networkConfig.minNumber,
-            networkConfig.lottoTaxPercent,
-            networkConfig.vrfCoordinator,
-            networkConfig.subscriptionId,
-            networkConfig.gasLane,
-            networkConfig.requestConfirmations,
-            networkConfig.callbackGasLimit,
-            networkConfig.numberOfWords);
+        Lotto.LottoConfig memory lottoConfig = Lotto.LottoConfig({
+            entryFee: networkConfig.entryFee,
+            lottoTaxPercent: networkConfig.lottoTaxPercent,
+            vrfCoordinator: networkConfig.vrfCoordinator,
+            subscriptionId: networkConfig.subscriptionId,
+            gasLane: networkConfig.gasLane,
+            requestConfirmations: networkConfig.requestConfirmations,
+            callbackGasLimit: networkConfig.callbackGasLimit,
+            numberOfWords: networkConfig.numberOfWords
+        });
+
+        vm.startBroadcast(networkConfig.account);
+        TestLotto lotto = new TestLotto(lottoConfig);
         vm.stopBroadcast();
 
         AddConsumer addConsumer = new AddConsumer();
-        addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto));
+        addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
 
         return (lotto, config);
     }
