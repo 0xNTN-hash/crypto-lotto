@@ -110,9 +110,9 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
                             EVENTS
     //////////////////////////////////////////////////////////////*/
     event NewParticipantEntered();
-    event WinningNumbers(uint8[6] winningNumbers);
-    event RequestedNumbersDraw(uint256 requestId);
-    event PrizeLevelCalculated(uint256 prizeAmountByLevelThree, uint256 prizeAmountByLevelFour, uint256 prizeAmountByLevelFive, uint256 prizeAmountByLevelSix);
+    event WinningNumbers(uint8[6] indexed winningNumbers);
+    event RequestedNumbersDraw(uint256 indexed requestId);
+    event PrizeLevelCalculated(uint256[4] indexed prizeAmountByLevels);
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -207,7 +207,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit WinningNumbers(winningNumbers);
 
         _destibutePrizesToTickets(winningNumbers);
-        _prepareNextLotto();
+        // _prepareNextLotto();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -221,7 +221,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
      */
     function checkUpkeep(bytes memory /* checkData */) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
         // TODO implement checkUpkeep
-        upkeepNeeded = s_state == LottoState.OPEN;
+        upkeepNeeded = true;
 
         return (upkeepNeeded, "");
     }
@@ -246,9 +246,9 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
      * @dev Requests the VRF coordinator to generate random numbers
      */
     function _pickNumbers( ) internal {
-        if(s_state == LottoState.CALCULATING_WINNERS) {
-            revert LOTTO__LottoIsNotOpen();
-        }
+        // if(s_state == LottoState.CALCULATING_WINNERS) {
+        //     revert LOTTO__LottoIsNotOpen();
+        // }
 
         s_state = LottoState.CALCULATING_WINNERS;
 
@@ -257,7 +257,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
                 subId: s_config.subscriptionId,
                 requestConfirmations: s_config.requestConfirmations,
                 callbackGasLimit: s_config.callbackGasLimit,
-                numWords: s_numbersLength,
+                numWords: s_config.numberOfWords,
                 extraArgs: VRFV2PlusClient._argsToBytes(
                     // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
                     VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
@@ -381,7 +381,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
             prizeAmountByLevelSix = ((s_totalJackpot * SIX_NUMBERS_PRIZE_PERCENT) / 100) / _numbersOfSix;
         }
 
-        emit PrizeLevelCalculated(prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix);
+        emit PrizeLevelCalculated([prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix]);
 
         return (prizeAmountByLevelThree, prizeAmountByLevelFour, prizeAmountByLevelFive, prizeAmountByLevelSix);
     }
@@ -407,6 +407,10 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                           GETTERS FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+    function getLottoState() public view returns(LottoState) {
+        return s_state;
+    }
+
     function getNumberOfParticipants() public view returns(uint256) {
         return s_numberOfParticipants;
     }

@@ -2,6 +2,9 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
+import {console} from "forge-std/Console.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import {TestLotto} from "./TestLotto.sol";
 import {Lotto} from "../src/Lotto.sol";
 import {CodeConstants} from "../script/HelperConfig.s.sol";
@@ -11,6 +14,7 @@ import {HelperConfig} from "../script/HelperConfig.s.sol";
 contract LottoTest is Test, CodeConstants {
     TestLotto lotto;
     HelperConfig helperConfig;
+    HelperConfig.NetworkConfig networkConfig;
     DeployLotto deployer;
 
     uint256 entryFee;
@@ -31,6 +35,7 @@ contract LottoTest is Test, CodeConstants {
         987654123987654123,
         192837465192837465,
         563728491563728491,
+        563728491563728491,
         827364819827364819,
         10293847561029384756,
         675849302675849302,
@@ -41,6 +46,7 @@ contract LottoTest is Test, CodeConstants {
     function setUp() public {
         deployer = new DeployLotto();
         (lotto, helperConfig) = deployer.deployTestLotto();
+        networkConfig = helperConfig.getNetworkConfig();
         entryFee = CodeConstants.ENTRY_FEE;
         intervalBetweenDraws = CodeConstants.INTERVAL_BETWEEN_DRAWS;
         numbersLength = CodeConstants.NUMBERS_LENGTH;
@@ -49,6 +55,10 @@ contract LottoTest is Test, CodeConstants {
         lottoTaxPercent = CodeConstants.LOTTO_TAX_PERCENT;
 
         vm.deal(PLAYER, entryFee*10);
+    }
+
+    function testLottoIsOpenOnDeployment() public {
+        assertEq(lotto.getLottoState(), Lotto.LottoState.OPEN);
     }
 
     function testCorrectJackpot() public {
@@ -174,7 +184,21 @@ contract LottoTest is Test, CodeConstants {
         lotto.enterLotto{value: entryFee}(playerNumbers);
         vm.stopPrank();
 
+        vm.recordLogs();
         lotto.performUpkeep("");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        console.log(logs.length, 'LOGS LENGTH');
+        bytes32 requestId = logs[1].topics[1];
 
+        vm.recordLogs();
+        VRFCoordinatorV2_5Mock(networkConfig.vrfCoordinator).fulfillRandomWords(uint256(requestId), address(lotto));
+        logs = vm.getRecordedLogs();
+        console.log(logs.length, 'LOGS LENGTH');
+
+        for (uint256 i = 0; i < logs.length; i++) {
+            bytes32[] memory topics = logs[i].topics;
+            console.logBytes32(topics[0]);
+            emit log_bytes32(topics[0]); // Event signature
+        }
     }
 }

@@ -34,6 +34,7 @@ contract CreateSubscription is Script {
 
 contract FundSubscription is Script, CodeConstants {
     uint256 public constant FUND_AMOUNT = 20 ether; // 20 LINK
+
     function fundSubscriptionUsingConfig() public {
         HelperConfig helperConfig = new HelperConfig();
         address vrfCoordinator = helperConfig.getNetworkConfig().vrfCoordinator;
@@ -47,7 +48,7 @@ contract FundSubscription is Script, CodeConstants {
     function fundSubscription(address vrfCoordinator, uint256 subId, address linkToken, address account) public {
         if(block.chainid == LOCAL_CHAIN_ID) {
             vm.startBroadcast();
-            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, FUND_AMOUNT);
+            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, FUND_AMOUNT * 100);
             vm.stopBroadcast();
         } else {
             vm.startBroadcast(account);
