@@ -38,7 +38,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
                             ERRORS
     //////////////////////////////////////////////////////////////*/
     error LOTTO__WrongFee(string);
-    error LOTTO__LottoIsNotOpen();
+    error LOTTO__LottoIsNotOpen(string);
     error LOTTO__InvalidNumbersLength();
     error LOTTO__InvalidNumber(string);
     error LOTTO__NotEnoughUniqueNumbers();
@@ -119,6 +119,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
     constructor(LottoConfig memory _config) VRFConsumerBaseV2Plus(_config.vrfCoordinator) {
         s_config = _config;
+        s_state = LottoState.OPEN;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -126,7 +127,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
     function enterLotto(uint8[6] memory _numbers) external payable nonReentrant {
         if(s_state != LottoState.OPEN) {
-            revert LOTTO__LottoIsNotOpen();
+            revert LOTTO__LottoIsNotOpen("Lotto is not open");
         }
 
         if(msg.value != s_config.entryFee) {
@@ -409,6 +410,10 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
     function getLottoState() public view returns(LottoState) {
         return s_state;
+    }
+
+    function getLottoEntranceFee() public view returns(uint256) {
+        return s_config.entryFee;
     }
 
     function getNumberOfParticipants() public view returns(uint256) {

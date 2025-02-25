@@ -57,8 +57,8 @@ contract LottoTest is Test, CodeConstants {
         vm.deal(PLAYER, entryFee*10);
     }
 
-    function testLottoIsOpenOnDeployment() public {
-        assertEq(lotto.getLottoState(), Lotto.LottoState.OPEN);
+    function testLottoIsOpenOnDeployment() public view {
+        assert(lotto.getLottoState() == Lotto.LottoState.OPEN);
     }
 
     function testCorrectJackpot() public {
@@ -200,5 +200,13 @@ contract LottoTest is Test, CodeConstants {
             console.logBytes32(topics[0]);
             emit log_bytes32(topics[0]); // Event signature
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          TEST GETTERS
+    //////////////////////////////////////////////////////////////*/
+    function testEntranceFee() public view {
+        console.log("entryFee: ", entryFee);
+        assertEq(lotto.getLottoEntranceFee(), entryFee);
     }
 }

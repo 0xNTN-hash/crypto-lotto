@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.20;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import {DevOpsTools} from "@foundryDevops/DevOpsTools.sol";
 
@@ -14,17 +14,24 @@ contract CreateSubscription is Script {
         address vrfCoordinator = helperConfig.getNetworkConfig().vrfCoordinator;
         address account = helperConfig.getNetworkConfig().account;
 
-        uint256 subId = createSubscription(vrfCoordinator, account);
+        (uint256 subId, ) = createSubscription(vrfCoordinator, account);
 
         return (subId, vrfCoordinator);
     }
 
-    function createSubscription(address vrfCoordinator, address account) public returns (uint256) {
+    function createSubscription(address vrfCoordinator, address account) public returns (uint256, address) {
+        console.log("Creating a subscriotnio with chainID: ", block.chainid);
+        console.log("With account: ", account);
+        console.log("With vrfCoordinator: ", vrfCoordinator);
+
         vm.startBroadcast(account);
         uint256 subId = VRFCoordinatorV2_5Mock(vrfCoordinator).createSubscription();
         vm.stopBroadcast();
 
-        return subId;
+        console.log("Your subscription ID is: ", subId);
+        console.log("Please update the subscription ID in the HelperConfig contract");
+
+        return (subId, vrfCoordinator);
     }
 
     function run() public {
@@ -46,9 +53,14 @@ contract FundSubscription is Script, CodeConstants {
     }
 
     function fundSubscription(address vrfCoordinator, uint256 subId, address linkToken, address account) public {
+        console.log("Funding subscription: ", subId);
+        console.log("Using vrfCoordinator: ", vrfCoordinator);
+        console.log("On chainId: ", block.chainid);
+        console.log("Using account: ", account);
+
         if(block.chainid == LOCAL_CHAIN_ID) {
             vm.startBroadcast();
-            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, FUND_AMOUNT * 100);
+            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, FUND_AMOUNT);
             vm.stopBroadcast();
         } else {
             vm.startBroadcast(account);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.20;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {Lotto} from "src/Lotto.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
 import {TestLotto} from "test/TestLotto.sol";
@@ -10,7 +10,15 @@ import {CreateSubscription, FundSubscription, AddConsumer} from "script/Interact
 contract DeployLotto is Script {
     function deployLotto() public returns (Lotto, HelperConfig) {
         HelperConfig config = new HelperConfig();
-        HelperConfig.NetworkConfig memory networkConfig = config.getNetworkConfig();
+        HelperConfig.NetworkConfig memory networkConfig = config.getOrCreateAnvilNetworkConfig();
+
+        if(networkConfig.subscriptionId == 0) {
+            CreateSubscription createSubscription = new CreateSubscription();
+            (networkConfig.subscriptionId, ) = createSubscription.createSubscription(networkConfig.vrfCoordinator, networkConfig.account);
+
+            FundSubscription fundSubscription = new FundSubscription();
+            fundSubscription.fundSubscription(networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.linkToken, networkConfig.account);
+        }
 
         Lotto.LottoConfig memory lottoConfig = Lotto.LottoConfig({
             entryFee: networkConfig.entryFee,
@@ -23,9 +31,12 @@ contract DeployLotto is Script {
             numberOfWords: networkConfig.numberOfWords
         });
 
-        vm.startBroadcast();
+        vm.startBroadcast(networkConfig.account);
         Lotto lotto = new Lotto(lottoConfig);
         vm.stopBroadcast();
+
+        AddConsumer addConsumer = new AddConsumer();
+        addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
 
         return (lotto, config);
     }
@@ -36,7 +47,7 @@ contract DeployLotto is Script {
 
         if(networkConfig.subscriptionId == 0) {
             CreateSubscription createSubscription = new CreateSubscription();
-            networkConfig.subscriptionId = createSubscription.createSubscription(networkConfig.vrfCoordinator, networkConfig.account);
+            (networkConfig.subscriptionId, networkConfig.vrfCoordinator) = createSubscription.createSubscription(networkConfig.vrfCoordinator, networkConfig.account);
 
             FundSubscription fundSubscription = new FundSubscription();
             fundSubscription.fundSubscription(networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.linkToken, networkConfig.account);
@@ -57,17 +68,14 @@ contract DeployLotto is Script {
         TestLotto lotto = new TestLotto(lottoConfig);
         vm.stopBroadcast();
 
-        AddConsumer addConsumer = new AddConsumer();
-        addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
+        // AddConsumer addConsumer = new AddConsumer();
+        // addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
 
-        return (lotto, config);
-    }
-
-    function createSubscription() public {
-
+        // return (lotto, config);
     }
 
     function run() public {
-        deployLotto();
+        (Lotto lotto, ) = deployLotto();
+        console.log("Lotto Address: ", address(lotto));
     }
 }
