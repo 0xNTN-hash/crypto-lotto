@@ -11,8 +11,8 @@ import {LinkToken} from "test/mocks/LinkToken.sol";
 contract CreateSubscription is Script {
     function createSubscriptionUsingConfig() public returns (uint256, address) {
         HelperConfig helperConfig = new HelperConfig();
-        address vrfCoordinator = helperConfig.getNetworkConfig().vrfCoordinator;
-        address account = helperConfig.getNetworkConfig().account;
+        address vrfCoordinator = helperConfig.getConfig().vrfCoordinator;
+        address account = helperConfig.getConfig().account;
 
         (uint256 subId, ) = createSubscription(vrfCoordinator, account);
 
@@ -44,10 +44,10 @@ contract FundSubscription is Script, CodeConstants {
 
     function fundSubscriptionUsingConfig() public {
         HelperConfig helperConfig = new HelperConfig();
-        address vrfCoordinator = helperConfig.getNetworkConfig().vrfCoordinator;
-        uint256 subId = helperConfig.getNetworkConfig().subscriptionId;
-        address linkToken = helperConfig.getNetworkConfig().linkToken;
-        address account = helperConfig.getNetworkConfig().account;
+        address vrfCoordinator = helperConfig.getConfig().vrfCoordinator;
+        uint256 subId = helperConfig.getConfig().subscriptionId;
+        address linkToken = helperConfig.getConfig().linkToken;
+        address account = helperConfig.getConfig().account;
 
         fundSubscription(vrfCoordinator, subId, linkToken, account);
     }
@@ -77,9 +77,9 @@ contract FundSubscription is Script, CodeConstants {
 contract AddConsumer is Script {
     function addConsumerUsingConfig(address mostRecentlyDeployed) public {
         HelperConfig helperConfig = new HelperConfig();
-        address vrfCoordinator = helperConfig.getNetworkConfig().vrfCoordinator;
-        uint256 subId = helperConfig.getNetworkConfig().subscriptionId;
-        address account = helperConfig.getNetworkConfig().account;
+        address vrfCoordinator = helperConfig.getConfig().vrfCoordinator;
+        uint256 subId = helperConfig.getConfig().subscriptionId;
+        address account = helperConfig.getConfig().account;
 
         addConsumer(vrfCoordinator, subId, mostRecentlyDeployed, account);
     }

@@ -43,7 +43,7 @@ contract DeployLotto is Script {
 
     function deployTestLotto() public returns (TestLotto, HelperConfig) {
         HelperConfig config = new HelperConfig();
-        HelperConfig.NetworkConfig memory networkConfig = config.getNetworkConfig();
+        HelperConfig.NetworkConfig memory networkConfig = config.getConfig();
 
         if(networkConfig.subscriptionId == 0) {
             CreateSubscription createSubscription = new CreateSubscription();
@@ -68,8 +68,8 @@ contract DeployLotto is Script {
         TestLotto lotto = new TestLotto(lottoConfig);
         vm.stopBroadcast();
 
-        // AddConsumer addConsumer = new AddConsumer();
-        // addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
+        AddConsumer addConsumer = new AddConsumer();
+        addConsumer.addConsumer(networkConfig.vrfCoordinator, networkConfig.subscriptionId, address(lotto), networkConfig.account);
 
         // return (lotto, config);
     }

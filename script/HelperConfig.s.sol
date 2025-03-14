@@ -9,7 +9,7 @@ abstract contract CodeConstants {
     /* Mock VRF Values */
     uint96 public MOCK_BASE_FEE = 0.25 ether;
     uint96 public MOCK_GAS_PRICE = 1e9;
-    int256 public MOCK_WEI_PER_UNIT_LINK = 4e15;
+    int256 public MOCK_WEI_PER_UNIT_LINK = 1e16;
 
     uint16 public REQUEST_CONFIRMATIONS = 3;
     uint32 public NUMBER_OF_WORDS = 10;
@@ -26,6 +26,8 @@ abstract contract CodeConstants {
 }
 
 contract HelperConfig is Script, CodeConstants {
+    error HelperConfig__InvalidChainId(uint256 chainId);
+
     struct NetworkConfig {
         uint256 entryFee;
         uint8 lottoTaxPercent;
@@ -38,16 +40,25 @@ contract HelperConfig is Script, CodeConstants {
         uint32 numberOfWords;
         address account;
     }
-
+    
     mapping(uint256 networkId => NetworkConfig) public networkConfigs;
 
     constructor() {
         networkConfigs[ETH_SEPOLIA_CHAIN_ID] = getSepoliaNetworkConfig();
-        networkConfigs[LOCAL_CHAIN_ID] = getOrCreateAnvilNetworkConfig();
     }
 
-    function getNetworkConfig() public view returns (NetworkConfig memory) {
-        return networkConfigs[block.chainid];
+    function getConfigByChainId(uint256 chainId) public returns (NetworkConfig memory) {
+        if(networkConfigs[chainId].vrfCoordinator != address(0)) {
+            return networkConfigs[chainId];
+        } else if (chainId == LOCAL_CHAIN_ID) {
+            return getOrCreateAnvilNetworkConfig();
+        } else {
+            revert HelperConfig__InvalidChainId(chainId);
+        }
+    }
+
+    function getConfig() public returns(NetworkConfig memory) {
+        return getConfigByChainId(block.chainid);
     }
 
     function getSepoliaNetworkConfig() public view returns (NetworkConfig memory) {
