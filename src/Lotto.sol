@@ -94,10 +94,11 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
     LottoConfig private s_config;
-    uint256 private constant s_intervalBetweenDraws = 1 minutes;
+    uint256 private constant s_intervalBetweenDraws = 7 days;
     uint32 private constant s_numbersLength = 6;
     uint8 private constant s_maxNumber = 49;
     uint8 private constant s_minNumber = 1;
+    uint256 private s_lastDrawTimestamp;
 
     string private s_version = "1.0.0";
     uint256 private s_totalJackpot;
@@ -119,6 +120,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
     constructor(LottoConfig memory _config) VRFConsumerBaseV2Plus(_config.vrfCoordinator) {
         s_config = _config;
+        s_lastDrawTimestamp = block.timestamp;
         s_state = LottoState.OPEN;
     }
 
@@ -222,7 +224,7 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
      */
     function checkUpkeep(bytes memory /* checkData */) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
         // TODO implement checkUpkeep
-        upkeepNeeded = true;
+        bool timePassed = s_lastDrawTimestamp + s_intervalBetweenDraws >= block.timestamp;
 
         return (upkeepNeeded, "");
     }
@@ -237,6 +239,8 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
             revert LOTTO__UpkeepNotNeeded();
         }
 
+        s_state = LottoState.CALCULATING_WINNERS;
+
         _pickNumbers();
     }
 
@@ -247,12 +251,6 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
      * @dev Requests the VRF coordinator to generate random numbers
      */
     function _pickNumbers( ) internal {
-        // if(s_state == LottoState.CALCULATING_WINNERS) {
-        //     revert LOTTO__LottoIsNotOpen();
-        // }
-
-        s_state = LottoState.CALCULATING_WINNERS;
-
         VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient.RandomWordsRequest({
                 keyHash: s_config.gasLane,
                 subId: s_config.subscriptionId,
@@ -430,5 +428,13 @@ contract Lotto is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
     function getPrizePercentages() public pure returns(uint256, uint256, uint256, uint256) {
         return (THREE_NUMBERS_PRIZE_PERCENT, FOUR_NUMBERS_PRIZE_PERCENT, FIVE_NUMBERS_PRIZE_PERCENT, SIX_NUMBERS_PRIZE_PERCENT);
+    }
+
+    function getLastDrawTimestamp() public view returns(uint256) {
+        return s_lastDrawTimestamp;
+    }
+
+    function getIntervalBetweenDraws() public pure returns(uint256) {
+        return s_intervalBetweenDraws;
     }
 }
